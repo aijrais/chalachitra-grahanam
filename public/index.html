@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f5ef">
+  <meta name="description" content="Review basketball and Carnatic practice recordings privately on your device.">
+  <title>Review studio · ChalaChitra</title>
+  <link rel="icon" href="./assets/icon-192.png">
+  <link rel="apple-touch-icon" href="./assets/icon-192.png">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./studio.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#studio">Skip to studio</a>
+  <header class="topbar">
+    <div class="navinner"><a href="./" class="brand" aria-label="ChalaChitra home">
+        <img src="./assets/icon-192.png" alt="">ChalaChitra
+      </a>
+      <nav aria-label="Workspace">
+        <button class="navitem active" id="studioNav">
+          <svg class="ic" aria-hidden="true"><use href="./icons.svg#studio"></use></svg> Studio
+        </button>
+        <button class="navitem" id="sessionsNav">
+          <svg class="ic" aria-hidden="true"><use href="./icons.svg#archive"></use></svg> Sessions
+        </button>
+      </nav>
+      <span class="private">
+        <svg class="ic" aria-hidden="true"><use href="./icons.svg#shield"></use></svg> <span>On-device</span>
+      </span>
+      <button class="iconbtn guidebtn" id="guideBtn" aria-label="Open studio guide" title="Studio guide">
+        <svg class="ic" aria-hidden="true"><use href="./icons.svg#help"></use></svg>
+      </button>
+    </div>
+  </header>
+  <main id="studio">
+    <div class="pagehead">
+      <div>
+        <h1>Review studio<span class="period">.</span></h1>
+        <p class="draftline"><span id="draftDot" class="draftdot"></span><span id="draftState">Loading
+            session…</span></p>
+      </div>
+      <div class="pageactions">
+        <button class="btn plain" id="importBtn">
+          <svg class="ic" aria-hidden="true"><use href="./icons.svg#import"></use></svg> Import report
+        </button>
+        <button class="btn primary" id="openBtn">
+          <svg class="ic" aria-hidden="true"><use href="./icons.svg#folder"></use></svg> Open recording
+        </button>
+      </div>
+    </div>
+    <div class="workgrid">
+      <section class="panel playerpanel" aria-labelledby="clipName">
+        <div class="panelhead sourcehead">
+          <div class="sourceicon">
+            <svg class="ic" aria-hidden="true"><use href="./icons.svg#film"></use></svg>
+          </div>
+          <div class="sourcelabel">
+            <h2 id="clipName">Court practice</h2><span id="clipMeta">Sample recording</span>
+          </div><span id="sourceTag" class="tag">Sample</span>
+        </div>
+        <div id="playerShell">
+          <div id="stage" class="stage">
+            <video id="media" playsinline preload="auto"></video>
+            <div class="audioart" id="audioArt" hidden>
+              <div class="wave" aria-hidden="true"></div><span id="audioName">Held swara</span>
+            </div>
+            <div class="stagebadge" id="stageBadge">
+              <svg class="ic" aria-hidden="true"><use href="./icons.svg#ball"></use></svg> <span>Basketball</span>
+            </div>
+            <button id="centerPlay" class="centerplay" aria-label="Play recording">
+              <svg class="ic" aria-hidden="true"><use href="./icons.svg#play"></use></svg>
+            </button>
+            <div id="eventCaption" class="eventcaption" hidden></div>
+            <div id="rimOverlay" class="rimoverlay" hidden><i></i><i></i><i></i><i></i><span>RIM</span></div>
+            <div id="calOverlay" class="caloverlay" tabindex="0" role="group"
+              aria-label="Mark rim edges. Use arrow keys to move and Enter to mark. Hold Shift for larger steps."
+              hidden>
+              <b id="calCursor" hidden></b><span id="calPrompt"></span>
+            </div>
+            <div id="missingMedia" class="missing" hidden><span id="missingText">Attach the matching recording to
+                play this session.</span>
+              <button id="attachBtn" class="btn light">
+                <svg class="ic" aria-hidden="true"><use href="./icons.svg#link"></use></svg> Attach recording
+              </button><a id="youtubeGo" class="btn light" target="_blank" rel="noopener noreferrer" hidden>Open on
+                YouTube ↗</a>
+            </div>
+          </div>
+          <div class="transport">
+            <div id="scrubWrap" class="scrubwrap">
+              <div id="tickTrack" class="ticktrack"></div>
+              <input id="scrub" type="range" min="0" max="1000" value="0" step="1" aria-label="Recording position">
+            </div>
+            <div class="transportrow">
+              <button id="playBtn" class="iconbtn" aria-label="Play">
+                <svg class="ic" aria-hidden="true"><use href="./icons.svg#play"></use></svg>
+              </button><span id="playTime">0:00</span><span class="divider">/</span><span
+                id="totalTime">0:00</span><span class="spacer"></span>
+              <button id="speedBtn" class="speed" title="Change playback speed">1×</button>
+              <button id="volumeBtn" class="iconbtn" aria-label="Mute">
+                <svg class="ic" aria-hidden="true"><use href="./icons.svg#volume"></use></svg>
+              </button>
+              <button id="fullBtn" class="iconbtn" aria-label="Full screen">
+                <svg class="ic" aria-hidden="true"><use href="./icons.svg#expand"></use></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="panel timeline" aria-labelledby="timelineTitle">
+        <div class="panelhead"><span class="panelicon">
+            <svg class="ic" aria-hidden="true"><use href="./icons.svg#list"></use></svg>
+          </span>
+          <h2 id="timelineTitle">Event timeline</h2><span class="count" id="eventCount">0</span>
+          <button id="addBtn" class="btn add">
+            <svg class="ic" aria-hidden="true"><use href="./icons.svg#plus"></use></svg> Add event
+          </button>
+        </div>
+        <div class="filters" aria-label="Filter timeline">
+          <button data-filter="all" aria-pressed="true">All</button>
+          <button data-filter="proposed" aria-pressed="false">To review</button>
+          <button data-filter="confirmed" aria-pressed="false">Confirmed</button>
+        </div>
+        <div id="events" class="events"></div>
+        <div class="timelinefoot"><span id="eventFoot"></span>
+          <button class="textbtn" id="exportBtn">
+            <svg class="ic" aria-hidden="true"><use href="./icons.svg#export"></use></svg> Export
+          </button>
+        </div>
+      </section>
+      <section class="panel tools" aria-labelledby="toolsTitle">
+        <div class="panelhead"><span class="panelicon">
+            <svg class="ic" aria-hidden="true"><use href="./icons.svg#scan"></use></svg>
+          </span>
+          <h2 id="toolsTitle">Analysis tools</h2><span class="fine right">LOCAL</span>
+        </div>
+        <div class="panelbody">
+          <div class="modes">
+            <button id="sportMode" aria-pressed="true">
+              <svg class="ic" aria-hidden="true"><use href="./icons.svg#ball"></use></svg> Basketball
+            </button>
+            <button id="musicMode" aria-pressed="false">
+              <svg class="ic" aria-hidden="true"><use href="./icons.svg#music"></use></svg> Carnatic violin
+            </button>
+          </div>
+          <div id="sportTools">
+            <h3>Basket detection</h3>
+            <p>Mark a visible rim in a fixed-camera clip. Review each ball crossing before counting it.</p>
+            <div class="toolactions">
+              <button class="btn dark" id="scanSport">
+                <svg class="ic" aria-hidden="true"><use href="./icons.svg#scan"></use></svg> Analyse clip
+              </button>
+              <button class="btn plain" id="markRim">
+                <svg class="ic" aria-hidden="true"><use href="./icons.svg#target"></use></svg> Mark rim
+              </button><span class="calstatus" id="rimState"></span>
+            </div>
+          </div>
+          <div id="musicTools" hidden>
+            <h3>Held-swara intonation</h3>
+            <p>Set the tonic and intended steady note. Feedback compares sustained pitch with that target.</p>
+            <div class="musicinputs">
+              <label>Sa (Hz)
+                <input id="saInput" type="number" min="50" max="1000" step=".1" value="220">
+              </label>
+              <label>Target<select id="targetInput">
+                  <option>Sa</option>
+                  <option>Pa</option>
+                  <option>Upper Sa</option>
+                  <option>Custom</option>
+                </select>
+              </label>
+              <label id="customTarget" hidden>Target (Hz)
+                <input id="hzInput" type="number" min="50" max="1600" step=".1" value="220">
+              </label>
+            </div>
+            <button class="btn dark" id="scanMusic">
+              <svg class="ic" aria-hidden="true"><use href="./icons.svg#scan"></use></svg> Analyse pitch
+            </button>
+          </div>
+          <div class="job" id="job" hidden>
+            <progress id="jobBar" max="1" value="0"></progress>
+            <button id="cancelJob" class="textbtn">Cancel</button>
+          </div>
+          <p id="analysisMessage" class="feedback" role="status"></p>
+        </div>
+      </section>
+      <section class="panel summary" aria-labelledby="summaryTitle">
+        <div class="panelhead"><span class="panelicon">
+            <svg class="ic" aria-hidden="true"><use href="./icons.svg#stats"></use></svg>
+          </span>
+          <h2 id="summaryTitle">Session summary</h2>
+        </div>
+        <div class="panelbody">
+          <div class="numbers" id="numbers"></div>
+          <p class="summaryNote" id="summaryNote"></p>
+          <div id="breakdown"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <input hidden type="file" id="fileInput" accept="video/*,audio/*,.mp4,.mov,.webm,.wav,.m4a,.mp3">
+  <input hidden type="file" id="reportInput" accept=".json,application/json">
+  <dialog id="openDialog">
+    <div class="dialoghead">
+      <h2>Open recording</h2>
+      <button data-close class="iconbtn" aria-label="Close">
+        <svg class="ic" aria-hidden="true"><use href="./icons.svg#cross"></use></svg>
+      </button>
+    </div>
+    <div class="dialogbody">
+      <button class="openfile" id="pickFile">
+        <svg class="ic" aria-hidden="true"><use href="./icons.svg#folder"></use></svg><strong>Choose a local
+          file</strong><span>Video or audio · up to 64 MiB</span>
+      </button>
+      <h3>Sample recordings</h3>
+      <div class="samplelist">
+        <button id="sampleCourt">
+          <svg class="ic" aria-hidden="true"><use href="./icons.svg#ball"></use></svg><span><strong>Court
+              practice</strong><small>Simulated basketball drill · 10 s</small></span>
+          <svg class="ic" aria-hidden="true"><use href="./icons.svg#right"></use></svg>
+        </button>
+        <button id="sampleSa">
+          <svg class="ic" aria-hidden="true"><use href="./icons.svg#music"></use></svg><span><strong>Held Sa
+              exercise</strong><small>Synthesised pitch reference · 6 s</small></span>
+          <svg class="ic" aria-hidden="true"><use href="./icons.svg#right"></use></svg>
+        </button>
+      </div>
+      <details>
+        <summary>Add a YouTube reference</summary>
+        <p>Save bookmarks against a link. Attach your original file for automatic analysis.</p>
+        <form id="refForm">
+          <label>YouTube URL
+            <input id="ytUrl" type="url" required placeholder="https://www.youtube.com/watch?v=…">
+          </label>
+          <button class="btn plain">Open reference</button>
+        </form>
+      </details>
+    </div>
+  </dialog>
+  <dialog id="sessionsDialog">
+    <div class="dialoghead">
+      <h2>Saved sessions</h2>
+      <button data-close class="iconbtn" aria-label="Close">
+        <svg class="ic" aria-hidden="true"><use href="./icons.svg#cross"></use></svg>
+      </button>
+    </div>
+    <div class="dialogbody">
+      <p>Drafts saved in this browser. Export a report for a durable copy.</p>
+      <div id="draftList" class="samplelist"></div>
+    </div>
+  </dialog>
+  <dialog id="exportDialog">
+    <div class="dialoghead">
+      <h2>Export session</h2>
+      <button data-close class="iconbtn" aria-label="Close">
+        <svg class="ic" aria-hidden="true"><use href="./icons.svg#cross"></use></svg>
+      </button>
+    </div>
+    <div class="dialogbody">
+      <p>Keep the JSON report with your original recording to restore this timeline on another device.</p>
+      <div class="samplelist">
+        <button id="jsonBtn">
+          <svg class="ic" aria-hidden="true"><use href="./icons.svg#file"></use></svg><span><strong>JSON
+              report</strong><small>All events, evidence, settings and corrections</small></span>
+          <svg class="ic" aria-hidden="true"><use href="./icons.svg#download"></use></svg>
+        </button>
+        <button id="vttBtn">
+          <svg class="ic" aria-hidden="true"><use href="./icons.svg#film"></use></svg><span><strong>WebVTT
+              captions</strong><small>Timestamped events for a media player</small></span>
+          <svg class="ic" aria-hidden="true"><use href="./icons.svg#download"></use></svg>
+        </button>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="guideDialog">
+    <div class="dialoghead">
+      <h2>Studio guide</h2>
+      <button data-close class="iconbtn" aria-label="Close">
+        <svg class="ic" aria-hidden="true"><use href="./icons.svg#cross"></use></svg>
+      </button>
+    </div>
+    <div class="dialogbody guide">
+      <h3>Review a clip</h3>
+      <p>Open a local file, play or scrub to a moment and choose Add event. Select a timeline row to replay it or
+        edit its time, evidence and review status. Space toggles playback and M adds a marker outside form fields.
+      </p>
+      <h3>Basketball</h3>
+      <p>Mark the left and right rim edges. Automatic analysis looks for moving orange balls passing down through a
+        fixed hoop. Occlusion, a moving camera or another ball colour can hide makes. Confirm the basket and assign
+        its point value, team or player when visible.</p>
+      <h3>Carnatic violin</h3>
+      <p>Use a solo held note. Pa uses 3:2 above Sa and Upper Sa uses 2:1. Custom accepts a teacher’s target
+        frequency. Gamakas, finger positions and accompanied passages need other evidence.</p>
+      <h3>Save and restore</h3>
+      <p>Analysis supports up to 60 seconds. Longer files can be reviewed manually. Export JSON, then import it and
+        reattach the same recording on another device. Session drafts stay in this browser. Your media stays on
+        your device.</p>
+    </div>
+  </dialog>
+  <dialog id="eventDialog">
+    <form id="eventForm">
+      <div class="dialoghead">
+        <h2 id="editTitle">Add event</h2>
+        <button type="button" data-close class="iconbtn" aria-label="Close">
+          <svg class="ic" aria-hidden="true"><use href="./icons.svg#cross"></use></svg>
+        </button>
+      </div>
+      <div class="dialogbody editbody">
+        <div class="formpair">
+          <label>Type<select id="eKind">
+              <option value="note">Observation</option>
+              <option value="basket">Basket</option>
+              <option value="pitch">Held note</option>
+            </select>
+          </label>
+          <label>Review status<select id="eStatus">
+              <option value="confirmed">Confirmed</option>
+              <option value="proposed">To review</option>
+              <option value="dismissed">Dismissed</option>
+            </select>
+          </label>
+        </div>
+        <div class="formpair">
+          <label>Start (m:ss.mmm)
+            <input id="eStart" required inputmode="decimal">
+          </label>
+          <label>End (optional)
+            <input id="eEnd" inputmode="decimal">
+          </label>
+        </div>
+        <label>Label
+          <input id="eTitle" maxlength="140" placeholder="Event name (optional)">
+        </label>
+        <div class="basketfields" id="basketFields">
+          <label>Points<select id="ePoints">
+              <option value="">Unknown</option>
+              <option>1</option>
+              <option>2</option>
+              <option>3</option>
+            </select>
+          </label>
+          <label>Team
+            <input id="eTeam" maxlength="80" placeholder="Unknown">
+          </label>
+          <label>Player
+            <input id="ePlayer" maxlength="80" placeholder="Unknown">
+          </label>
+        </div>
+        <label>Review notes
+          <textarea id="eNote" rows="2" maxlength="800" placeholder="What did you hear or see?"></textarea>
+        </label>
+        <div id="eEvidence" class="evidence" hidden></div>
+        <p id="eError" class="error" role="alert"></p>
+      </div>
+      <div class="dialogfoot">
+        <button type="button" id="replayEvent" class="btn plain replay">
+          <svg class="ic" aria-hidden="true"><use href="./icons.svg#play"></use></svg> Replay
+        </button>
+        <button type="button" data-close class="btn plain">Cancel</button>
+        <button class="btn primary">
+          <svg class="ic" aria-hidden="true"><use href="./icons.svg#check"></use></svg> Save event
+        </button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>
