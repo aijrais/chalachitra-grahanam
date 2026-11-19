@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f6f5ef">
-  <meta name="description" content="Review basketball and Carnatic practice recordings privately on your device.">
+  <meta name="description" content="Review football matches, basketball clips and Carnatic practice recordings.">
   <title>Review studio · ChalaChitra</title>
   <link rel="icon" href="./assets/icon-192.png">
   <link rel="apple-touch-icon" href="./assets/icon-192.png">
@@ -27,7 +27,7 @@
         </button>
       </nav>
       <span class="private">
-        <svg class="ic" aria-hidden="true"><use href="./icons.svg#shield"></use></svg> <span>On-device</span>
+        <svg class="ic" aria-hidden="true"><use href="./icons.svg#shield"></use></svg> <span>Local drafts</span>
       </span>
       <button class="iconbtn guidebtn" id="guideBtn" aria-label="Open studio guide" title="Studio guide">
         <svg class="ic" aria-hidden="true"><use href="./icons.svg#help"></use></svg>
@@ -45,7 +45,8 @@
         <button class="btn plain" id="importBtn">
           <svg class="ic" aria-hidden="true"><use href="./icons.svg#import"></use></svg> Import report
         </button>
-        <button class="btn primary" id="openBtn">
+        <button class="btn primary" id="openMatchBtn">Open football match</button>
+        <button class="btn plain" id="openBtn">
           <svg class="ic" aria-hidden="true"><use href="./icons.svg#folder"></use></svg> Open recording
         </button>
       </div>
@@ -57,19 +58,20 @@
             <svg class="ic" aria-hidden="true"><use href="./icons.svg#film"></use></svg>
           </div>
           <div class="sourcelabel">
-            <h2 id="clipName">Court practice</h2><span id="clipMeta">Sample recording</span>
-          </div><span id="sourceTag" class="tag">Sample</span>
+            <h2 id="clipName">Choose a recording</h2><span id="clipMeta">Open a football link or local file</span>
+          </div><span id="sourceTag" class="tag" hidden></span>
         </div>
         <div id="playerShell">
           <div id="stage" class="stage">
             <video id="media" playsinline preload="auto"></video>
+            <div id="youtubePlayer" hidden></div>
             <div class="audioart" id="audioArt" hidden>
               <div class="wave" aria-hidden="true"></div><span id="audioName">Held swara</span>
             </div>
-            <div class="stagebadge" id="stageBadge">
+            <div class="stagebadge" id="stageBadge" hidden>
               <svg class="ic" aria-hidden="true"><use href="./icons.svg#ball"></use></svg> <span>Basketball</span>
             </div>
-            <button id="centerPlay" class="centerplay" aria-label="Play recording">
+            <button id="centerPlay" hidden class="centerplay" aria-label="Play recording">
               <svg class="ic" aria-hidden="true"><use href="./icons.svg#play"></use></svg>
             </button>
             <div id="eventCaption" class="eventcaption" hidden></div>
@@ -87,7 +89,7 @@
                 YouTube ↗</a>
             </div>
           </div>
-          <div class="transport">
+          <div class="transport" id="transport">
             <div id="scrubWrap" class="scrubwrap">
               <div id="tickTrack" class="ticktrack"></div>
               <input id="scrub" type="range" min="0" max="1000" value="0" step="1" aria-label="Recording position">
@@ -107,6 +109,11 @@
             </div>
           </div>
         </div>
+        <div id="linkActions" class="matchsource" hidden>
+          <a id="watchMatch" target="_blank" rel="noopener noreferrer">Open on YouTube</a>
+          <button class="textbtn" id="attachMatch">Use original video</button>
+        </div>
+        <p id="playerNotice" class="matchnotice" role="status" hidden></p>
       </section>
       <section class="panel timeline" aria-labelledby="timelineTitle">
         <div class="panelhead"><span class="panelicon">
@@ -133,16 +140,35 @@
         <div class="panelhead"><span class="panelicon">
             <svg class="ic" aria-hidden="true"><use href="./icons.svg#scan"></use></svg>
           </span>
-          <h2 id="toolsTitle">Analysis tools</h2><span class="fine right">LOCAL</span>
+          <h2 id="toolsTitle">Analysis tools</h2>
         </div>
         <div class="panelbody">
           <div class="modes">
+            <button id="footballMode" aria-pressed="false">Football</button>
             <button id="sportMode" aria-pressed="true">
               <svg class="ic" aria-hidden="true"><use href="./icons.svg#ball"></use></svg> Basketball
             </button>
             <button id="musicMode" aria-pressed="false">
               <svg class="ic" aria-hidden="true"><use href="./icons.svg#music"></use></svg> Carnatic violin
             </button>
+          </div>
+          <div id="footballTools" hidden>
+            <h3>Find moments to review</h3>
+            <p>Find bursts of motion and changes of camera view. The private link analyser also checks available audio for whistle-like sounds. Replay a moment to tag a goal, shot, save, corner, foul or pass.</p>
+            <p id="matchScanInfo"></p>
+            <div class="toolactions">
+              <button class="btn dark" id="scanMatch">Analyse match</button>
+              <button class="btn plain" id="matchOriginal">Choose original video</button>
+            </div>
+            <details id="pairSettings">
+              <summary>Connect a private link analyser</summary>
+              <p>To scan a YouTube URL, start the analyser in your Cloud Shell and enter its Web Preview address. An original video file can be scanned on this device.</p>
+              <label>Private analyser address
+                <input id="pairOrigin" type="url" inputmode="url" autocomplete="off" placeholder="https://8080-…cloudshell.dev">
+              </label>
+              <button id="pairSave" class="btn plain">Save address</button>
+              <span id="pairState" class="feedback" role="status"></span>
+            </details>
           </div>
           <div id="sportTools">
             <h3>Basket detection</h3>
@@ -210,6 +236,15 @@
       </button>
     </div>
     <div class="dialogbody">
+      <h3>Football match</h3>
+      <form id="refForm" class="matchform">
+        <label>YouTube match URL
+          <input id="ytUrl" type="url" required inputmode="url" autocomplete="off" placeholder="Paste a YouTube link">
+        </label>
+        <button class="btn primary">Open match</button>
+        <p id="urlError" class="error" role="alert"></p>
+      </form>
+      <h3>Local recording</h3>
       <button class="openfile" id="pickFile">
         <svg class="ic" aria-hidden="true"><use href="./icons.svg#folder"></use></svg><strong>Choose a local
           file</strong><span>Video or audio · up to 64 MiB</span>
@@ -227,16 +262,7 @@
           <svg class="ic" aria-hidden="true"><use href="./icons.svg#right"></use></svg>
         </button>
       </div>
-      <details>
-        <summary>Add a YouTube reference</summary>
-        <p>Save bookmarks against a link. Attach your original file for automatic analysis.</p>
-        <form id="refForm">
-          <label>YouTube URL
-            <input id="ytUrl" type="url" required placeholder="https://www.youtube.com/watch?v=…">
-          </label>
-          <button class="btn plain">Open reference</button>
-        </form>
-      </details>
+
     </div>
   </dialog>
   <dialog id="sessionsDialog">
@@ -286,6 +312,8 @@
       <p>Open a local file, play or scrub to a moment and choose Add event. Select a timeline row to replay it or
         edit its time, evidence and review status. Space toggles playback and M adds a marker outside form fields.
       </p>
+      <h3>Football</h3>
+      <p>Open a YouTube match. For automatic suggestions, use the private link analyser or select the matching original video. Football scans support up to three hours. Only confirmed football tags count in the summary. Pause the player and choose Add event to tag a moment yourself.</p>
       <h3>Basketball</h3>
       <p>Mark the left and right rim edges. Automatic analysis looks for moving orange balls passing down through a
         fixed hoop. Occlusion, a moving camera or another ball colour can hide makes. Confirm the basket and assign
@@ -294,9 +322,8 @@
       <p>Use a solo held note. Pa uses 3:2 above Sa and Upper Sa uses 2:1. Custom accepts a teacher’s target
         frequency. Gamakas, finger positions and accompanied passages need other evidence.</p>
       <h3>Save and restore</h3>
-      <p>Analysis supports up to 60 seconds. Longer files can be reviewed manually. Export JSON, then import it and
-        reattach the same recording on another device. Session drafts stay in this browser. Your media stays on
-        your device.</p>
+      <p>Basketball and pitch analysis support up to 60 seconds. Longer files can be reviewed manually. Export JSON, then import it and
+        reattach the same recording on another device. Session drafts stay in this browser. Local video files are processed on this device.</p>
     </div>
   </dialog>
   <dialog id="eventDialog">
@@ -334,7 +361,7 @@
           <input id="eTitle" maxlength="140" placeholder="Event name (optional)">
         </label>
         <div class="basketfields" id="basketFields">
-          <label>Points<select id="ePoints">
+          <label id="pointsField">Points<select id="ePoints">
               <option value="">Unknown</option>
               <option>1</option>
               <option>2</option>

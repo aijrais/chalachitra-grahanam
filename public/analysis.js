@@ -10,7 +10,7 @@ import {
 } from './session.js';
 const cancelled = () => new DOMException('Analysis cancelled.', 'AbortError');
 
-function mediaReady(media, event, signal, act) {
+export function mediaReady(media, event, signal, act) {
   return new Promise((resolve, reject) => {
     const finish = err => {
       clearTimeout(timer);

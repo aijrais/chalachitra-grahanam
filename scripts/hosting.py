@@ -175,10 +175,19 @@ def deploy(api, channel, root, state_file):
     return target["url"]
 
 
+def preview_channel(value):
+    if value == "live" or not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,28}[a-z0-9])?", value):
+        raise argparse.ArgumentTypeError("Choose a preview channel name of up to 30 lowercase letters, digits or hyphens.")
+    return value
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["check", "preview", "live"])
+    parser.add_argument("--channel", type=preview_channel, help="Preview channel (default: pilot)")
     args = parser.parse_args()
+    if args.channel and args.action != "preview":
+        parser.error("--channel applies only to preview")
     check_billing(json.loads(cloud("billing", "projects", "describe", PROJECT, "--format=json")))
     api = Firebase()
     site = api.call("GET", f"projects/{PROJECT}/sites/{SITE}")
@@ -187,7 +196,7 @@ def main():
     print(f"Verified {SITE}. Billing is disabled and unlinked.")
     if args.action == "check":
         return
-    channel = "live" if args.action == "live" else PREVIEW
+    channel = "live" if args.action == "live" else (args.channel or PREVIEW)
     directory = ROOT / ".firebase"
     directory.mkdir(exist_ok=True)
     state_file = directory / ("chalachitra-" + channel + ".json")

@@ -1,12 +1,13 @@
+import {FOOTBALL_ENGINE, footballKinds, frameStep} from './football.js';
 // The exported report is also the IndexedDB draft format. Media bytes are never stored.
 export const SCHEMA = 'chalachitra.report';
 export const VERSION = 1;
 export const MAX_EVENTS = 2000;
 export const MAX_BYTES = 64 * 1024 * 1024;
 export const MAX_REPORT_BYTES = 16 * 1024 * 1024;
-const modes = ['basketball', 'violin'];
+const modes = ['basketball', 'violin', 'football'];
 const statuses = ['proposed', 'confirmed', 'dismissed'];
-const kinds = ['basket', 'pitch', 'note'];
+const kinds = ['basket', 'pitch', 'note', ...Object.keys(footballKinds)];
 const confidenceLevels = ['unknown', 'low', 'medium', 'high', 'reviewed'];
 const fields = ['event', 'timing', 'points', 'team', 'player', 'pitch'];
 export const uid = () => crypto.randomUUID();
@@ -28,11 +29,13 @@ export function youtubeId(input) {
     const u = new URL(input);
     if (!['https:', 'http:'].includes(u.protocol) || u.username || u.password || u.port) return null;
     let id;
-    if (u.hostname === 'youtu.be') id = u.pathname.slice(1);
+    if (['youtu.be', 'www.youtu.be'].includes(u.hostname)) id = /^\/([\w-]{11})\/?$/.exec(u.pathname)?.[1];
     if (['www.youtube.com', 'youtube.com', 'm.youtube.com'].includes(u.hostname)) {
-      if (u.pathname === '/watch') id = u.searchParams.get('v');
+      if (u.pathname === '/watch' || u.pathname === '/watch/') id = u.searchParams.get('v');
       else id = /^\/(?:shorts|embed|live)\/([^/]+)\/?$/.exec(u.pathname)?.[1];
     }
+    if (['youtube-nocookie.com', 'www.youtube-nocookie.com'].includes(u.hostname))
+      id = /^\/embed\/([\w-]{11})\/?$/.exec(u.pathname)?.[1];
     return /^[\w-]{11}$/.test(id || '') ? id : null;
   } catch {
     return null;
@@ -99,6 +102,13 @@ export function validateReport(r) {
     (s.sha256 || s.youtubeId), 'Invalid recording information.');
   ensure(Number.isInteger(s.durationMs) && finite(s.durationMs, 0, 86400000) && (s.durationMs || !s.sha256),
     'Invalid recording duration.');
+  if (r.footballFileSignature !== undefined)
+    ensure(typeof r.footballFileSignature === 'string' && /^[0-9a-f]{64}$/.test(r.footballFileSignature), 'Invalid football recording signature.');
+  if (r.footballScan !== undefined) {
+    const scan = r.footballScan;
+    ensure(scan && scan.engine === FOOTBALL_ENGINE && Number.isInteger(scan.samples) && finite(scan.samples, 1, 3202) &&
+      scan.stepSeconds === frameStep(s.durationMs / 1000), 'Invalid football scan summary.');
+  }
   const g = r.settings;
   ensure(g && finite(g.saHz, 50, 1000) && finite(g.customHz, 50, 1600) && ['Sa', 'Pa', 'Upper Sa', 'Custom']
     .includes(g.target), 'Invalid pitch settings.');
@@ -131,7 +141,7 @@ export function displayTitle(e) {
   if (e.title) return e.title;
   if (e.kind === 'basket') return e.status === 'confirmed' ? 'Made basket' : 'Possible basket';
   if (e.kind === 'pitch') return (e.measurement?.target || 'Swara') + ' · held note';
-  return 'Observation';
+  return footballKinds[e.kind] || 'Observation';
 }
 export function totals(events) {
   const baskets = events.filter(e => e.kind === 'basket' && e.status === 'confirmed');

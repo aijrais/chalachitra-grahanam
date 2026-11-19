@@ -1,7 +1,7 @@
 // Only the application shell and the two bundled samples belong in this cache.
 const cacheName = 'chalachitra-studio-dev-1';
 const files = ['./', './index.html', './app.js', './studio.css', './session.js', './detectors.js', './analysis.js',
-  './pitch-worker.js',
+  './pitch-worker.js', './football.js', './football-report.js', './football-scan.js', './youtube-player.js',
   './manifest.webmanifest', './icons.svg', './assets/barlow-regular.woff', './assets/barlow-semibold.woff',
   './assets/icon-192.png',
   './assets/icon-512.png', './assets/court.mp4', './assets/held-sa.wav'

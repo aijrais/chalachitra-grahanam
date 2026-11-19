@@ -20,6 +20,10 @@ import {
   scanBasketball,
   scanViolin
 } from './analysis.js';
+import {footballKinds, frameStep} from './football.js';
+import {analyserOrigin, applyMatchScan, footballStats, studioOrigin} from './football-report.js';
+import {scanFootballFile} from './football-scan.js';
+import {openYouTube} from './youtube-player.js';
 const $ = id => document.getElementById(id);
 const media = $('media'),
   stage = $('stage');
@@ -46,6 +50,10 @@ let report = null,
   editing = null,
   calibration = null,
   job = null;
+let youtube = null, remoteNotice = '', privateAnalyser = '';
+try { privateAnalyser = analyserOrigin(localStorage.getItem('chalachitra.analyser')) || ''; } catch {}
+const modeLabels = {football: 'Football', basketball: 'Basketball', violin: 'Carnatic violin'};
+const modeIcon = mode => mode === 'violin' ? 'music' : mode === 'football' ? 'film' : 'ball';
 let cursor = 0,
   openGeneration = 0,
   saveGeneration = 0,
@@ -152,6 +160,9 @@ function setSource(r, file = null, url = '') {
   filter = 'all';
   editing = null;
   cursor = 0;
+  youtube?.destroy();
+  youtube = null;
+  remoteNotice = '';
   media.pause();
   media.removeAttribute('src');
   media.removeAttribute('poster');
@@ -164,9 +175,28 @@ function setSource(r, file = null, url = '') {
     media.src = url;
     media.load();
   }
+  if (!url && r.source.youtubeId && r.mode === 'football') mountMatchPlayer(r);
   $('analysisMessage').textContent = '';
   render();
   save(false);
+}
+
+function mountMatchPlayer(r) {
+  youtube = openYouTube($('youtubePlayer'), r.source.youtubeId, info => {
+    if (report !== r) return;
+    let changed = false;
+    if (info.title && info.title !== r.source.name) { r.source.name = info.title; changed = true; }
+    const ms = Math.round((info.duration || 0) * 1000);
+    if (ms > 0 && ms <= 86400000 && !r.footballScan && ms !== r.source.durationMs && r.events.every(e => e.endMs <= ms)) {
+      r.source.durationMs = ms;
+      changed = true;
+    }
+    if (changed) { save(); render(); }
+  }, message => {
+    if (report !== r) return;
+    remoteNotice = message;
+    updatePlayer();
+  });
 }
 
 function metadata(url) {
@@ -246,7 +276,9 @@ async function openFile(file, {
   restore = null
 } = {}) {
   if (!file) return;
-  if (file.size > MAX_BYTES) throw new Error('Choose a recording up to 64 MiB.');
+  if (attach && report?.mode === 'football' && report.source.youtubeId && !report.source.sha256)
+    return attachMatchOriginal(file);
+  if (file.size > MAX_BYTES) throw new Error('For a full football recording, open its YouTube link first and choose Use original video. Other files support up to 64 MiB.');
   if (!restore && !attach && !canLeave()) return;
   const generation = ++openGeneration,
     url = URL.createObjectURL(file);
@@ -290,6 +322,29 @@ async function openFile(file, {
     throw err;
   }
 }
+async function attachMatchOriginal(file) {
+  const target = report, generation = ++openGeneration, url = URL.createObjectURL(file);
+  try {
+    const info = await metadata(url);
+    if (info.audio) throw new Error('Choose a video file for football analysis.');
+    frameStep(info.durationMs / 1000);
+    if (target.source.durationMs && Math.abs(target.source.durationMs - info.durationMs) > 3000)
+      throw new Error('The duration differs from this YouTube match. Choose the same edit.');
+    if (target.events.some(e => e.endMs > info.durationMs)) throw new Error('This file ends before a saved event.');
+    const size = 65536, middle = Math.floor(file.size / 2);
+    const fingerprint = await digest(await new Blob([String(file.size), file.slice(0, size),
+      file.slice(middle, middle + size), file.slice(-size)]).arrayBuffer());
+    if (target.footballFileSignature && target.footballFileSignature !== fingerprint)
+      throw new Error('This file differs from the original previously attached to this match.');
+    if (generation !== openGeneration || report !== target) { URL.revokeObjectURL(url); return; }
+    target.footballFileSignature = fingerprint;
+    if (target.source.name === 'YouTube · ' + target.source.youtubeId) target.source.name = file.name.slice(0, 255);
+    target.source.durationMs = info.durationMs;
+    setSource(target, file, url);
+    close('openDialog');
+  } catch (err) { URL.revokeObjectURL(url); throw err; }
+}
+
 async function openSample(s, restore = null) {
   if (!canLeave()) return;
   const generation = ++openGeneration;
@@ -319,8 +374,10 @@ async function openSaved(r) {
     return;
   }
   ++openGeneration;
-  if (report && r.source.sha256 && r.source.sha256 === report.source.sha256 && blob) setSource(r, blob,
-    mediaURL);
+  const sameFile = r.source.sha256 && r.source.sha256 === report?.source.sha256;
+  const sameOriginal = r.footballFileSignature && r.footballFileSignature === report?.footballFileSignature &&
+    r.source.youtubeId === report.source.youtubeId;
+  if (blob && (sameFile || sameOriginal)) setSource(r, blob, mediaURL);
   else setSource(r);
   close('sessionsDialog');
 }
@@ -339,7 +396,7 @@ async function loadReport(file) {
   if (stored && JSON.stringify(stored) !== JSON.stringify(r) && !confirm(
       'Replace the local draft for this recording with the imported report?')) return;
   await openSaved(r);
-  say(mediaURL ? 'Report restored.' : 'Report restored. Attach the matching recording to replay it.');
+  say(mediaURL || youtube ? 'Report restored.' : 'Report restored. Attach the matching recording to replay it.');
 }
 
 function saveDownload(name, body, type) {
@@ -367,7 +424,9 @@ function exportReport(format) {
 }
 
 function currentMs() {
-  return mediaURL ? Math.round((media.currentTime || 0) * 1000) : cursor;
+  if (mediaURL) return Math.round((media.currentTime || 0) * 1000);
+  const seconds = youtube?.time();
+  return Number.isFinite(seconds) ? Math.round(seconds * 1000) : cursor;
 }
 
 function seek(ms) {
@@ -377,6 +436,7 @@ function seek(ms) {
       media.currentTime = cursor / 1000;
     } catch {}
   }
+  youtube?.seek(cursor / 1000);
   updateTime();
 }
 
@@ -401,8 +461,11 @@ function updateTime() {
   $('playTime').textContent = timeLabel(ms);
   $('totalTime').textContent = dur ? timeLabel(dur) : '—';
   $('scrub').value = String(dur ? Math.min(1000, Math.round(ms / dur * 1000)) : 0);
-  if (report.source.youtubeId) $('youtubeGo').href = 'https://www.youtube.com/watch?v=' + report.source.youtubeId +
-    '&t=' + Math.floor(ms / 1000) + 's';
+  if (report.source.youtubeId) {
+    const link = 'https://www.youtube.com/watch?v=' + report.source.youtubeId + '&t=' + Math.floor(ms / 1000) + 's';
+    $('youtubeGo').href = link;
+    $('watchMatch').href = link;
+  }
 }
 
 function videoBox() {
@@ -442,15 +505,20 @@ function updatePlayer() {
   $('audioArt').hidden = !audio;
   $('audioName').textContent = sampleOf(r) === samples.sa ? 'Held Sa · 220 Hz' : 'Audio recording';
   $('centerPlay').hidden = !mediaURL || !media.paused || !!calibration;
-  $('missingMedia').hidden = !!mediaURL;
+  $('missingMedia').hidden = !!mediaURL || !!youtube;
+  $('youtubePlayer').hidden = !youtube;
+  $('transport').hidden = !!youtube;
+  $('stageBadge').hidden = !!youtube;
+  $('linkActions').hidden = !r.source.youtubeId || r.mode !== 'football';
+  $('playerNotice').textContent = remoteNotice;
+  $('playerNotice').hidden = !remoteNotice;
   $('missingText').textContent = r.source.sha256 ? 'Attach the original recording to replay this report.' :
     'Bookmark the reference by entering event times, or attach the original recording.';
   $('youtubeGo').hidden = !r.source.youtubeId;
   $('calOverlay').hidden = !calibration;
   $('calCursor').hidden = !calibration?.cursor;
   $('calPrompt').textContent = calibration?.first ? 'Tap the other edge of the rim' : 'Tap one edge of the rim';
-  $('stageBadge').replaceChildren(icon(r.mode === 'basketball' ? 'ball' : 'music'), el('span', '', r.mode ===
-    'basketball' ? 'Basketball' : 'Carnatic violin'));
+  $('stageBadge').replaceChildren(icon(modeIcon(r.mode)), el('span', '', modeLabels[r.mode]));
   setIcon($('playBtn'), media.paused ? 'play' : 'pause', media.paused ? 'Play' : 'Pause');
   setIcon($('volumeBtn'), media.muted ? 'mute' : 'volume', media.muted ? 'Unmute' : 'Mute');
   for (const id of ['playBtn', 'speedBtn', 'volumeBtn']) $(id).disabled = !mediaURL;
@@ -479,6 +547,7 @@ function renderEvents() {
     b.append(el('strong', '', displayTitle(e)));
     const details = e.kind === 'basket' ? [e.points ? e.points + ' pt' : 'Points unknown', e.team, e.player]
       .filter(Boolean).join(' · ') :
+      Object.hasOwn(footballKinds, e.kind) ? [e.team, e.player, e.note].filter(Boolean).join(' · ') :
       e.measurement ? e.measurement.hz.toFixed(1) + ' Hz · ' + signed(e.measurement.cents) + ' cents' : e.note;
     if (details) b.append(el('small', '', details));
     badges.append(el('span', 'status ' + e.status, statusText(e.status)));
@@ -486,6 +555,7 @@ function renderEvents() {
     row.append(el('span', 'etime', timeLabel(e.startMs, true).slice(0, -2)), b, icon('right'));
     row.onclick = () => {
       media.pause();
+      youtube?.pause();
       seek(e.startMs);
       edit(e);
     };
@@ -515,7 +585,9 @@ function summary() {
     t = totals(r.events),
     mus = r.mode === 'violin';
   const pitches = r.events.filter(e => e.kind === 'pitch' && e.status === 'confirmed' && e.measurement);
-  const metrics = mus ? [
+  const football = r.mode === 'football';
+  const stats = football ? footballStats(r.events) : null;
+  const metrics = football ? [[stats.goal, 'Tagged goals'], [stats.shot, 'Tagged shots'], [t.pending, 'To review']] : mus ? [
     [pitches.length, 'Reviewed notes'],
     [pitches.length ? Math.round(pitches.reduce((n, e) => n + Math.abs(e.measurement.cents), 0) / pitches
       .length) : '—', 'Mean |cents|'],
@@ -530,11 +602,16 @@ function summary() {
     n.append(el('strong', '', v), el('small', '', label));
     return n;
   }));
-  $('summaryNote').textContent = mus ? 'Pitch totals use confirmed held notes.' : t.unknown ? t.unknown +
+  $('summaryNote').textContent = football ? 'Counts use confirmed tags. A goal and a shot are separate tags.' : mus ? 'Pitch totals use confirmed held notes.' : t.unknown ? t.unknown +
     ' confirmed ' + (t.unknown === 1 ? 'basket has' : 'baskets have') + ' an unknown point value.' :
     'Points use confirmed baskets with a reviewed value.';
   const bd = $('breakdown');
   bd.replaceChildren();
+  if (football) {
+    const other = ['save', 'corner', 'foul', 'pass', 'whistle'].filter(k => stats[k]).map(k => footballKinds[k] + ' · ' + stats[k]);
+    if (other.length) bd.append(el('p', '', other.join('   /   ')));
+    return;
+  }
   if (mus) return;
   const groups = new Map();
   for (const e of r.events.filter(e => e.kind === 'basket' && e.status === 'confirmed')) {
@@ -572,12 +649,16 @@ function render() {
   $('clipName').textContent = r.source.name.replace(/\.(mp4|mov|webm|wav|m4a|mp3|ogg)$/i, '');
   $('clipMeta').textContent = s ? (s === samples.court ? 'Simulated drill · Fixed camera' :
       'Synthesised exercise · Solo pitch') :
-    (r.source.sha256 ? 'Local recording' : 'YouTube reference') + (r.source.durationMs ? ' · ' + timeLabel(r.source
+    (r.source.sha256 ? 'Local recording' : r.mode === 'football' ? (blob ? 'Original video attached' : 'YouTube match') : 'YouTube reference') + (r.source.durationMs ? ' · ' + timeLabel(r.source
       .durationMs) : '');
-  $('sourceTag').textContent = s ? 'Demo clip' : r.source.sha256 ? 'Local file' : 'Reference';
-  $('sportTools').hidden = music;
+  $('sourceTag').hidden = false;
+  $('sourceTag').textContent = s ? 'Demo clip' : blob || r.source.sha256 ? 'Local file' : 'YouTube';
+  const football = r.mode === 'football';
+  $('footballTools').hidden = !football;
+  $('footballMode').setAttribute('aria-pressed', String(football));
+  $('sportTools').hidden = r.mode !== 'basketball';
   $('musicTools').hidden = !music;
-  $('sportMode').setAttribute('aria-pressed', String(!music));
+  $('sportMode').setAttribute('aria-pressed', String(r.mode === 'basketball'));
   $('musicMode').setAttribute('aria-pressed', String(music));
   $('saInput').value = r.settings.saHz;
   $('targetInput').value = r.settings.target;
@@ -590,7 +671,15 @@ function render() {
   $('scanSport').disabled = unavailable || blob?.type.startsWith('audio/');
   $('scanMusic').disabled = unavailable;
   $('markRim').disabled = !blob || blob.type.startsWith('audio/') || !!job;
-  if (!job && !$('analysisMessage').textContent && (!blob || r.source.durationMs > 60050)) $('analysisMessage')
+  $('scanMatch').disabled = !!job || (!r.source.youtubeId && !blob) || (!!blob && blob.type.startsWith('audio/'));
+  $('matchOriginal').disabled = !!job || (!r.source.youtubeId && !r.source.sha256);
+  $('pairSettings').hidden = !r.source.youtubeId;
+  const suggested = analyserOrigin($('pairOrigin').value);
+  $('pairState').textContent = suggested && suggested !== privateAnalyser ? 'Save this address to use it for your match.' :
+    privateAnalyser ? 'Private analyser address saved on this device.' : '';
+  const scan = r.footballScan;
+  $('matchScanInfo').textContent = football && scan ? 'Last scan sampled ' + scan.samples + ' frames, one every ' + scan.stepSeconds + ' s.' + (scan.audioScanned ? ' Audio has also been scanned for whistles.' : '') : '';
+  if (!football && !job && !$('analysisMessage').textContent && (!blob || r.source.durationMs > 60050)) $('analysisMessage')
     .textContent = !blob ? 'Attach a recording for automatic analysis.' :
     'Automatic analysis supports clips up to 60 seconds. Manual review is available.';
   updatePlayer();
@@ -603,6 +692,12 @@ function changeMode(mode) {
   stopJob();
   calibration = null;
   report.mode = mode;
+  if (!mediaURL && report.source.youtubeId) {
+    youtube?.destroy();
+    youtube = null;
+    remoteNotice = '';
+    if (mode === 'football') mountMatchPlayer(report);
+  }
   $('analysisMessage').textContent = '';
   save();
   render();
@@ -773,16 +868,78 @@ async function analyse() {
   }
 }
 
+async function analyseFootball() {
+  if (!report || job) return;
+  if (!blob) {
+    if (!report.source.youtubeId) return chooseFile(true);
+    if (!privateAnalyser || (analyserOrigin($('pairOrigin').value) && analyserOrigin($('pairOrigin').value) !== privateAnalyser)) {
+      $('pairSettings').open = true;
+      $('pairOrigin').focus();
+      $('analysisMessage').textContent = 'Save your private analyser address to scan this link, or choose the original video.';
+      return;
+    }
+    if (!studioOrigin(location.origin)) throw new Error('Open the studio at its Firebase preview or localhost address.');
+    const target = report;
+    await writeQueue;
+    if (report !== target) return;
+    if (storageFailed) throw new Error('Export this draft, then enable browser storage before leaving for link analysis.');
+    const request = crypto.randomUUID();
+    sessionStorage.setItem('chalachitra.matchRequest', JSON.stringify({id: target.source.youtubeId, request}));
+    const bridge = new URL('/match.html', privateAnalyser);
+    bridge.hash = new URLSearchParams({video: target.source.youtubeId, studio: location.origin, request}).toString();
+    location.assign(bridge.href);
+    return;
+  }
+  const control = new AbortController();
+  job = control;
+  media.pause();
+  $('jobBar').value = 0;
+  $('job').hidden = false;
+  $('analysisMessage').textContent = 'Sampling the recording on this device…';
+  render();
+  try {
+    const result = await scanFootballFile(mediaURL, report.source, control.signal, p => {
+      if (job === control) $('jobBar').value = p;
+    });
+    if (job !== control) return;
+    applyMatchScan(report, result);
+    save();
+    filter = 'all';
+    $('analysisMessage').textContent = scanMessage(result);
+  } catch (err) {
+    if (job === control) $('analysisMessage').textContent = err.name === 'AbortError' ? 'Analysis cancelled.' : err.message;
+  } finally {
+    if (job === control) { stopJob(); render(); }
+  }
+}
+
+function scanMessage(result) {
+  const visual = result.moments.length;
+  const message = visual + ' visual moment' + (visual === 1 ? '' : 's');
+  if (result.audioScanned) return message + ' and ' + result.whistles.length + ' whistle-like sounds detected. Review the timeline.';
+  const note = result.audioScanned === false ? ' No decodable audio track was available.' : '';
+  return (visual ? message + ' detected. Review the timeline.' : 'Scan complete. No distinct motion peaks or view changes met the threshold.') + note;
+}
+
 function edit(event = null) {
   if (!report) return;
   if (!event && report.events.length >= MAX_EVENTS) {
     say('The session already has 2000 events.');
     return;
   }
+  const at = currentMs();
   media.pause();
+  youtube?.pause();
   editing = event?.id || null;
-  const e = event || newEvent('note', currentMs());
-  $('replayEvent').hidden = !event || !mediaURL;
+  const e = event || newEvent('note', at);
+  const available = {note: 'Observation'};
+  if (report.mode === 'football') Object.assign(available, footballKinds);
+  else Object.assign(available, {basket: 'Basket', pitch: 'Held note'});
+  if (!available[e.kind]) available[e.kind] = footballKinds[e.kind] || displayTitle(e);
+  $('eKind').replaceChildren(...Object.entries(available).map(([kind, label]) => {
+    const option = el('option', '', label); option.value = kind; return option;
+  }));
+  $('replayEvent').hidden = !event || (!mediaURL && !youtube);
   $('editTitle').textContent = event ? 'Review event' : 'Add event';
   $('eKind').value = e.kind;
   $('eStatus').value = e.status;
@@ -793,7 +950,7 @@ function edit(event = null) {
   $('ePoints').value = e.points ?? '';
   $('eTeam').value = e.team;
   $('ePlayer').value = e.player;
-  $('basketFields').hidden = e.kind !== 'basket';
+  eventFields(e.kind);
   $('eError').textContent = '';
   const details = [];
   if (e.measurement) details.push(e.measurement.hz.toFixed(2) + ' Hz measured / ' + e.measurement.targetHz.toFixed(
@@ -808,10 +965,11 @@ function edit(event = null) {
 }
 $('replayEvent').onclick = safely(async () => {
   const event = report?.events.find(item => item.id === editing);
-  if (!event || !mediaURL) return;
+  if (!event || (!mediaURL && !youtube)) return;
   close('eventDialog');
   seek(Math.max(0, event.startMs - 750));
-  await media.play();
+  if (youtube) youtube.play();
+  else await media.play();
 });
 $('eventForm').onsubmit = e => {
   e.preventDefault();
@@ -825,7 +983,8 @@ $('eventForm').onsubmit = e => {
   }
   const prior = report.events.find(e => e.id === editing),
     kind = $('eKind').value,
-    basket = kind === 'basket';
+    basket = kind === 'basket',
+    teamSport = basket || Object.hasOwn(footballKinds, kind);
   const next = prior ? {
     ...prior,
     confidence: {
@@ -851,15 +1010,15 @@ $('eventForm').onsubmit = e => {
     note: $('eNote').value.trim(),
     status: $('eStatus').value,
     points: basket && $('ePoints').value ? Number($('ePoints').value) : null,
-    team: basket ? $('eTeam').value.trim() : '',
-    player: basket ? $('ePlayer').value.trim() : '',
+    team: teamSport ? $('eTeam').value.trim() : '',
+    player: teamSport ? $('ePlayer').value.trim() : '',
     reviewedAt: now()
   });
   if (kind !== 'pitch') next.measurement = null;
   if (next.status === 'confirmed') next.confidence.event = 'reviewed';
   if (!prior || prior.startMs !== start || prior.endMs !== end) next.confidence.timing = 'reviewed';
-  if (basket)
-    for (const f of ['points', 'player', 'team']) next.confidence[f] = next[f] ? 'reviewed' : 'unknown';
+  if (teamSport)
+    for (const f of basket ? ['points', 'player', 'team'] : ['player', 'team']) next.confidence[f] = next[f] ? 'reviewed' : 'unknown';
   if (prior) report.events[report.events.indexOf(prior)] = next;
   else report.events.push(next);
   close('eventDialog');
@@ -867,9 +1026,11 @@ $('eventForm').onsubmit = e => {
   render();
   say(prior ? 'Event updated.' : 'Event added.');
 };
-$('eKind').onchange = () => {
-  $('basketFields').hidden = $('eKind').value !== 'basket';
-};
+function eventFields(kind) {
+  $('basketFields').hidden = kind !== 'basket' && !Object.hasOwn(footballKinds, kind);
+  $('pointsField').hidden = kind !== 'basket';
+}
+$('eKind').onchange = () => eventFields($('eKind').value);
 async function sessionList() {
   await writeQueue;
   const list = $('draftList');
@@ -885,32 +1046,55 @@ async function sessionList() {
       label = el('span');
     label.append(el('strong', '', r.source.name),
       el('small', '', r.events.length + ' events · ' + new Date(r.updatedAt).toLocaleString()));
-    btn.append(icon(r.mode === 'violin' ? 'music' : 'ball'), label, icon('right'));
+    btn.append(icon(modeIcon(r.mode)), label, icon('right'));
     btn.onclick = safely(async () => openSaved(await drafts('get', sessionKey(r))));
     list.append(btn);
   }
   if (!list.children.length) list.append(el('p', 'empty', 'No local drafts yet.'));
   show('sessionsDialog');
 }
+async function matchReport(id) {
+  await writeQueue;
+  const stored = await drafts('get', 'youtube:' + id).catch(() => null);
+  const r = stored ? validateReport(stored) : newReport({name: 'YouTube · ' + id, youtubeId: id, sha256: null, durationMs: 0}, 'football');
+  r.mode = 'football';
+  return r;
+}
+
 $('refForm').onsubmit = safely(async e => {
   e.preventDefault();
-  const id = youtubeId($('ytUrl').value);
-  if (!id) throw new Error('Enter a YouTube watch, Shorts or youtu.be video URL.');
+  const id = youtubeId($('ytUrl').value.trim());
+  if (!id) { $('urlError').textContent = 'Enter a YouTube watch, share, Shorts or live video link.'; return; }
   if (!canLeave()) return;
   const generation = ++openGeneration;
-  await writeQueue;
-  const draft = await drafts('get', 'youtube:' + id).catch(() => null);
+  const r = await matchReport(id);
   if (generation !== openGeneration) return;
-  const r = draft ? validateReport(draft) : newReport({
-    name: 'YouTube · ' + id,
-    youtubeId: id,
-    sha256: null,
-    durationMs: 0
-  }, 'basketball');
   setSource(r);
   close('openDialog');
+  $('urlError').textContent = '';
   $('ytUrl').value = '';
 });
+
+function openMatchDialog() {
+  show('openDialog');
+  $('ytUrl').focus();
+}
+$('openMatchBtn').onclick = openMatchDialog;
+$('footballMode').onclick = () => report ? changeMode('football') : openMatchDialog();
+$('watchMatch').onclick = updateTime;
+$('attachMatch').onclick = $('matchOriginal').onclick = () => chooseFile(true);
+$('scanMatch').onclick = safely(analyseFootball);
+$('pairOrigin').value = privateAnalyser;
+$('pairSave').onclick = () => {
+  const value = $('pairOrigin').value.trim();
+  const origin = analyserOrigin(value);
+  if (value && !origin) { $('pairState').textContent = 'Use the HTTPS address printed by Cloud Shell or a localhost address.'; return; }
+  privateAnalyser = origin || '';
+  try { localStorage.setItem('chalachitra.analyser', privateAnalyser); } catch {}
+  $('pairOrigin').value = privateAnalyser;
+  render();
+  $('analysisMessage').textContent = privateAnalyser ? 'Choose Analyse match to open your private analyser.' : 'Private analyser disconnected.';
+};
 for (const btn of document.querySelectorAll('[data-close]')) btn.onclick = () => btn.closest('dialog').close();
 $('openBtn').onclick = () => show('openDialog');
 $('guideBtn').onclick = () => show('guideDialog');
@@ -1003,6 +1187,33 @@ for (let i = 0; i < 47; i++) {
   wave.append(bar);
 }
 async function init() {
+  const hash = location.hash;
+  if (hash.startsWith('#analyser=')) {
+    const suggested = analyserOrigin(new URLSearchParams(hash.slice(1)).get('analyser'));
+    if (suggested && suggested !== privateAnalyser) {
+      $('pairOrigin').value = suggested;
+      $('pairSettings').open = true;
+    }
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+  if (hash.startsWith('#matchResult=')) {
+    try {
+      const pending = JSON.parse(sessionStorage.getItem('chalachitra.matchRequest') || 'null');
+      if (!pending || hash.length > 45000) throw new Error('Open this match and start a new scan from this tab.');
+      const result = JSON.parse(new URLSearchParams(hash.slice(1)).get('matchResult'));
+      if (result.videoId !== pending.id || result.request !== pending.request) throw new Error('The scan belongs to a different request.');
+      const r = await matchReport(pending.id);
+      applyMatchScan(r, result);
+      setSource(r);
+      $('analysisMessage').textContent = scanMessage(result);
+      await writeQueue;
+      if (!storageFailed) {
+        sessionStorage.removeItem('chalachitra.matchRequest');
+        history.replaceState(null, '', location.pathname + location.search);
+      }
+      return;
+    } catch (err) { say(err.message); history.replaceState(null, '', location.pathname + location.search); }
+  }
   let last;
   try {
     const key = localStorage.getItem('chalachitra.last');
@@ -1014,12 +1225,8 @@ async function init() {
       return;
     } catch {}
   }
-  try {
-    await openSample(samples.court);
-  } catch (err) {
-    setDraft('Open a recording to start', true);
-    say(err.message);
-  }
+  setDraft('Open a match or choose a recording');
+  openMatchDialog();
 }
 init();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
