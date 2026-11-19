@@ -6,7 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Event, Lock
 from time import monotonic
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 import argparse
 import json
 import mimetypes
@@ -23,6 +23,7 @@ MAX_SECONDS = 3 * 3600
 MAX_SIZE = 450 * 1024 * 1024
 ID = re.compile(r"[A-Za-z0-9_-]{11}")
 REQUEST_ID = re.compile(r"[a-f0-9-]{36}")
+FIREBASE_PREVIEW = re.compile(r"https://chalachitram-42da6--[a-z0-9-]+\.web\.app")
 PUBLIC = frozenset({"match.html", "match-connect.js", "studio.css", "football.js", "football-report.js",
                     "session.js", "assets/barlow-regular.woff", "assets/barlow-semibold.woff", "assets/icon-192.png"})
 
@@ -107,6 +108,28 @@ def analyse_link(video_id, progress):
         return data
 
 
+def resume_match(failed_address):
+    """Finish an already-issued studio request using the terminal instead of the web proxy."""
+    if len(failed_address) > 8192:
+        raise ValueError("Copy the complete analyser address from the failed tab.")
+    parsed = urlsplit(failed_address.strip())
+    private_host = (parsed.scheme == "https" and parsed.port is None and
+                    re.fullmatch(r"(?:[a-z0-9-]+\.)+(?:cloudshell\.dev|cloudworkstations\.dev)", parsed.hostname or ""))
+    loopback = parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1"}
+    if (not (private_host or loopback) or parsed.username is not None or parsed.password is not None
+            or parsed.path not in ("", "/", "/match.html")):
+        raise ValueError("Copy the analyser address from the failed tab, including everything after #.")
+    params = parse_qs(parsed.fragment, max_num_fields=8)
+    if any(len(params.get(key, [])) != 1 for key in ("video", "studio", "request")):
+        raise ValueError("The address is missing its scan request. Copy the entire address bar, including the # fragment.")
+    video, studio, request = (params[key][0] for key in ("video", "studio", "request"))
+    if not ID.fullmatch(video) or not REQUEST_ID.fullmatch(request) or not FIREBASE_PREVIEW.fullmatch(studio):
+        raise ValueError("Use a match request from this project's Firebase preview.")
+    result = analyse_link(video, lambda message: print(message, flush=True))
+    payload = json.dumps({**result, "request": request}, separators=(",", ":"))
+    return studio + "/#" + urlencode({"matchResult": payload})
+
+
 class Jobs:
     def __init__(self, analyse=analyse_link):
         self.analyse = analyse
@@ -170,6 +193,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlsplit(self.path).path
+        if path == "/api/studio":
+            return self.json(200, {"studio": self.server.studio})
         if path.startswith("/api/jobs/"):
             item = self.server.jobs.get(path.removeprefix("/api/jobs/"))
             return self.json(200 if item else 404, item or {"message": "This job has expired. Start a new scan."})
@@ -203,18 +228,33 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8080)
-    parser.add_argument("--studio", help="Firebase preview URL printed by the publisher")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--studio", help="Firebase preview URL printed by the publisher")
+    mode.add_argument("--resume", action="store_true", help="Finish a failed Firebase scan without opening a Web Preview port")
     args = parser.parse_args()
-    if args.studio and not re.fullmatch(r"https://chalachitram-42da6--[a-z0-9-]+\.web\.app/?", args.studio):
+    if args.resume:
+        try:
+            link = resume_match(input("Paste the full address from the failed analyser tab, then press Enter: "))
+        except (ValueError, EOFError) as err:
+            parser.exit(1, f"{err}\n")
+        print("Paste the entire review link into the address bar of the same browser tab that showed the 404.", flush=True)
+        print(link, flush=True)
+        return
+    if args.studio and not FIREBASE_PREVIEW.fullmatch(args.studio.removesuffix("/")):
         parser.error("Use the verified Firebase preview URL.")
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.jobs = Jobs()
+    server.studio = args.studio.removesuffix("/") if args.studio else None
     host = os.environ.get("WEB_HOST")
     origin = f"https://{args.port}-{host}" if host else f"http://localhost:{args.port}"
     server.allowed_origins = {origin, f"http://localhost:{args.port}", f"http://127.0.0.1:{args.port}"}
     print(f"Private analyser address: {origin}\nKeep this shell open while analysing. Ctrl-C stops it.", flush=True)
+    if host:
+        print(f"In this Cloud Shell, choose Web Preview and preview port {args.port}.", flush=True)
     if args.studio:
-        print("Open this football preview: " + args.studio.rstrip("/") + "/#" + urlencode({"analyser": origin}), flush=True)
+        if host:
+            print("When Match analyser opens, choose Open football studio to pair this browser's Google account.", flush=True)
+        print("Open this football preview: " + server.studio + "/#" + urlencode({"analyser": origin}), flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

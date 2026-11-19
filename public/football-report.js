@@ -41,15 +41,20 @@ export function footballStats(events) {
   return counts;
 }
 
-export function analyserOrigin(value) {
+// Take the account selector from the address the owner actually opened in
+// Web Preview. Only the root and a numeric Google account slot survive.
+export function analyserAddress(value) {
   try {
     const url = new URL(value);
-    if (url.username || url.password || url.search || url.hash) return null;
-    if (url.protocol === 'https:' && !url.port && /^(?:[a-z0-9-]+\.)+(?:cloudshell\.dev|cloudworkstations\.dev)$/.test(url.hostname))
-      return url.origin;
+    if (url.username || url.password) return null;
     if (url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname)) return url.origin;
-  } catch {}
-  return null;
+    if (url.protocol !== 'https:' || url.port ||
+        !/^(?:[a-z0-9-]+\.)+(?:cloudshell\.dev|cloudworkstations\.dev)$/.test(url.hostname)) return null;
+    const accounts = url.searchParams.getAll('authuser');
+    if (accounts.length === 1 && /^\d{1,4}$/.test(accounts[0]))
+      return url.origin + '/?authuser=' + accounts[0];
+    return url.origin;
+  } catch { return null; }
 }
 
 export function studioOrigin(value) {

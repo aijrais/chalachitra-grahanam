@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {FOOTBALL_ENGINE, FRAME_HEIGHT, FRAME_WIDTH, PIXELS, compareFrames, frameStep, findMoments, validateScan} from '../public/football.js';
-import {applyMatchScan, analyserOrigin, footballStats, studioOrigin} from '../public/football-report.js';
+import {applyMatchScan, analyserAddress, footballStats, studioOrigin} from '../public/football-report.js';
 import {newReport, newEvent, sessionKey, validateReport, vtt, youtubeId} from '../public/session.js';
 import {analyseFile} from '../scripts/match_frames.mjs';
 import {openYouTube} from '../public/youtube-player.js';
@@ -88,12 +88,17 @@ test('links return to an approved studio and the analyser accepts only supported
   const firebase = 'https://chalachitram-42da6--football-abcd.web.app';
   assert.equal(studioOrigin(firebase), firebase);
   assert.equal(studioOrigin('https://unrelated.web.app'), null);
-  assert.equal(analyserOrigin('https://8080-example.cloudshell.dev/'), 'https://8080-example.cloudshell.dev');
-  assert.equal(analyserOrigin('https://fakecloudshell.dev'), null);
-  assert.equal(analyserOrigin('https://preview.cloudshell.dev.evil.test'), null);
-  assert.equal(analyserOrigin('https://secret@preview.cloudshell.dev/'), null);
+  assert.equal(analyserAddress('https://8080-example.cloudshell.dev/'), 'https://8080-example.cloudshell.dev');
+  const shell = 'https://8080-example.cs-europe-west1-cloud.cloudshell.dev';
+  assert.equal(analyserAddress(shell + '/?authuser=2&redirectedPreviously=true#old'), shell + '/?authuser=2');
+  assert.equal(analyserAddress(shell + '/match.html?authuser=1&token=discard'), shell + '/?authuser=1');
+  assert.equal(analyserAddress(shell + '/?authuser=1&authuser=2'), shell);
+  assert.equal(analyserAddress(shell + '/?authuser=someone@example.test&token=discard'), shell);
+  assert.equal(analyserAddress('https://fakecloudshell.dev'), null);
+  assert.equal(analyserAddress('https://preview.cloudshell.dev.evil.test'), null);
+  assert.equal(analyserAddress('https://secret@preview.cloudshell.dev/'), null);
   assert.equal(studioOrigin('https://x.cloudshell.dev'), null);
-  assert.equal(analyserOrigin('http://127.0.0.1:8080'), 'http://127.0.0.1:8080');
+  assert.equal(analyserAddress('http://127.0.0.1:8080'), 'http://127.0.0.1:8080');
   assert.throws(() => validateScan(scan(ids[0], []), null));
 });
 
@@ -207,4 +212,31 @@ test('private web page posts a same-origin job and returns timestamped evidence 
   const returned = JSON.parse(new URLSearchParams(link.hash.slice(1)).get('matchResult'));
   assert.equal(returned.request, nonce);
   assert.deepEqual(validateScan(returned, ids[1]).moments, result.moments);
+});
+
+test('the authenticated Cloud Shell landing page pairs Firebase with only the verified host and account slot', async t => {
+  const firebase = 'https://chalachitram-42da6--football-example.web.app';
+  const shell = 'https://8080-cs-example.cs-europe-west1-test.cloudshell.dev';
+  const elements = new Map();
+  const get = id => {
+    if (!elements.has(id)) elements.set(id, {hidden: true});
+    return elements.get(id);
+  };
+  globalThis.document = {getElementById: get};
+  globalThis.location = new URL(shell + '/?authuser=2&redirectedPreviously=true&token=discard');
+  t.after(() => { delete globalThis.document; delete globalThis.location; });
+  const requests = [];
+  t.mock.method(globalThis, 'fetch', async path => {
+    requests.push(path);
+    return new Response(JSON.stringify({studio: firebase}));
+  });
+  await import('../public/match-connect.js?native-web-preview');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(get('launchStudio').hidden, false);
+  assert.equal(get('run').hidden, true);
+  const paired = new URL(get('launchStudio').href);
+  assert.equal(paired.origin, firebase);
+  assert.equal(paired.search, '');
+  assert.equal(new URLSearchParams(paired.hash.slice(1)).get('analyser'), shell + '/?authuser=2');
+  assert.deepEqual(requests, ['/api/studio']);
 });

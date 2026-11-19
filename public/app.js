@@ -21,7 +21,7 @@ import {
   scanViolin
 } from './analysis.js';
 import {footballKinds, frameStep} from './football.js';
-import {analyserOrigin, applyMatchScan, footballStats, studioOrigin} from './football-report.js';
+import {analyserAddress, applyMatchScan, footballStats, studioOrigin} from './football-report.js';
 import {scanFootballFile} from './football-scan.js';
 import {openYouTube} from './youtube-player.js';
 const $ = id => document.getElementById(id);
@@ -51,7 +51,7 @@ let report = null,
   calibration = null,
   job = null;
 let youtube = null, remoteNotice = '', privateAnalyser = '';
-try { privateAnalyser = analyserOrigin(localStorage.getItem('chalachitra.analyser')) || ''; } catch {}
+try { privateAnalyser = analyserAddress(localStorage.getItem('chalachitra.analyser')) || ''; } catch {}
 const modeLabels = {football: 'Football', basketball: 'Basketball', violin: 'Carnatic violin'};
 const modeIcon = mode => mode === 'violin' ? 'music' : mode === 'football' ? 'film' : 'ball';
 let cursor = 0,
@@ -674,7 +674,7 @@ function render() {
   $('scanMatch').disabled = !!job || (!r.source.youtubeId && !blob) || (!!blob && blob.type.startsWith('audio/'));
   $('matchOriginal').disabled = !!job || (!r.source.youtubeId && !r.source.sha256);
   $('pairSettings').hidden = !r.source.youtubeId;
-  const suggested = analyserOrigin($('pairOrigin').value);
+  const suggested = analyserAddress($('pairOrigin').value);
   $('pairState').textContent = suggested && suggested !== privateAnalyser ? 'Save this address to use it for your match.' :
     privateAnalyser ? 'Private analyser address saved on this device.' : '';
   const scan = r.footballScan;
@@ -872,7 +872,8 @@ async function analyseFootball() {
   if (!report || job) return;
   if (!blob) {
     if (!report.source.youtubeId) return chooseFile(true);
-    if (!privateAnalyser || (analyserOrigin($('pairOrigin').value) && analyserOrigin($('pairOrigin').value) !== privateAnalyser)) {
+    const entered = analyserAddress($('pairOrigin').value);
+    if (!privateAnalyser || (entered && entered !== privateAnalyser)) {
       $('pairSettings').open = true;
       $('pairOrigin').focus();
       $('analysisMessage').textContent = 'Save your private analyser address to scan this link, or choose the original video.';
@@ -885,7 +886,7 @@ async function analyseFootball() {
     if (storageFailed) throw new Error('Export this draft, then enable browser storage before leaving for link analysis.');
     const request = crypto.randomUUID();
     sessionStorage.setItem('chalachitra.matchRequest', JSON.stringify({id: target.source.youtubeId, request}));
-    const bridge = new URL('/match.html', privateAnalyser);
+    const bridge = new URL(privateAnalyser);
     bridge.hash = new URLSearchParams({video: target.source.youtubeId, studio: location.origin, request}).toString();
     location.assign(bridge.href);
     return;
@@ -1087,9 +1088,9 @@ $('scanMatch').onclick = safely(analyseFootball);
 $('pairOrigin').value = privateAnalyser;
 $('pairSave').onclick = () => {
   const value = $('pairOrigin').value.trim();
-  const origin = analyserOrigin(value);
-  if (value && !origin) { $('pairState').textContent = 'Use the HTTPS address printed by Cloud Shell or a localhost address.'; return; }
-  privateAnalyser = origin || '';
+  const address = analyserAddress(value);
+  if (value && !address) { $('pairState').textContent = 'Copy the address from a working Cloud Shell Web Preview or use localhost.'; return; }
+  privateAnalyser = address || '';
   try { localStorage.setItem('chalachitra.analyser', privateAnalyser); } catch {}
   $('pairOrigin').value = privateAnalyser;
   render();
@@ -1189,7 +1190,7 @@ for (let i = 0; i < 47; i++) {
 async function init() {
   const hash = location.hash;
   if (hash.startsWith('#analyser=')) {
-    const suggested = analyserOrigin(new URLSearchParams(hash.slice(1)).get('analyser'));
+    const suggested = analyserAddress(new URLSearchParams(hash.slice(1)).get('analyser'));
     if (suggested && suggested !== privateAnalyser) {
       $('pairOrigin').value = suggested;
       $('pairSettings').open = true;

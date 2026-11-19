@@ -14,9 +14,24 @@ git pull --ff-only origin trials_football_analysis
 bash scripts/start-football.sh --preview
 ```
 
-Open the URL printed after **Open this football preview** on your phone, signed in to the Google account that owns the Cloud Shell. Paste your YouTube watch, share, Shorts or archived live link. Under **Football**, choose **Save address** once, then **Analyse match → Start match scan → Review moments in studio**. The link contains the private analyser address so you can connect it without copying it. Other viewers need their own analyser or the original video. The address grants no access to your Cloud Shell.
+In the Cloud Shell that is running the analyser, choose **Web Preview → Preview on port 8080**. Use the browser profile signed in to that shell’s Google account. When **Match analyser** opens, choose **Open football studio**. Paste the YouTube link into the studio and choose **Save address → Analyse match → Start match scan → Review moments in studio**. The studio keeps the account number from the working Web Preview address when Google supplies one.
 
-For a Firebase-only preview, run `python3 scripts/hosting.py preview --channel football`. Open a match and choose **Use original video → Analyse match** to scan its original file on your device. This supports full games above the studio’s usual 64 MiB limit and avoids sending the file anywhere. To start or reconnect the companion separately, run `bash scripts/start-football.sh` and enter its printed address in **Connect a private link analyser**. Stop it with Ctrl-C. Its Python dependencies are installed in the ignored `.firebase/football-env/` on first use. The companion also runs on a computer with Python 3.10+, a supported Node.js 22+ release and a loopback browser.
+For a Firebase-only preview, run `python3 scripts/hosting.py preview --channel football`. Open a match and choose **Use original video → Analyse match** to scan its original file on your device. The original can exceed the studio's usual 64 MiB limit. To connect an existing deployment, run `bash scripts/start-football.sh`, use Cloud Shell's Web Preview and copy that page's address into **Connect a private link analyser**. Ctrl-C stops the companion. On first use, the launcher installs its Python dependencies under the ignored `.firebase/football-env/`. It also runs on a computer with Python 3.10+, a supported Node.js 22+ release and a loopback browser.
+
+### If Analyse opens a 404
+
+Keep the failed browser tab open. In the Google Cloud console that owns the running shell, choose **Web Preview → Preview on port 8080**. If you see **Match analyser**, reload the failed tab. To check the listener from a second terminal in the same Cloud Shell, run `curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/match.html`. A local 200 confirms the analyser page is available inside the shell. A connection error means you should check that the launcher is running on that port.
+
+You can also finish the pending scan in the terminal, including with an older Firebase football preview. Run these commands in a second Cloud Shell terminal.
+
+```sh
+cd ~/chalachitra-grahanam
+git switch trials_football_analysis
+git pull --ff-only
+bash scripts/start-football.sh --resume
+```
+
+At the prompt, paste the entire address from the failed tab, including the part after `#`. The command runs the same analyser directly. When it prints the review link, **paste the whole link into the address bar of that same failed tab**. The studio matches the pending request in that tab and merges the suggestions with your existing timeline. No redeployment is needed for this recovery. If YouTube declines to serve the recording to Cloud Shell, select **Use original video** in the studio.
 
 ### What football analysis extracts
 

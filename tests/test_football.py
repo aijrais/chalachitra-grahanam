@@ -1,7 +1,9 @@
 from http.client import HTTPResponse
-from io import BytesIO
+from io import BytesIO, StringIO
+from contextlib import redirect_stdout
 from pathlib import Path
 from threading import Event
+from urllib.parse import parse_qs, urlencode, urlsplit
 import json
 import shutil
 import subprocess
@@ -18,6 +20,8 @@ import hosting
 VIDEO = "Ab1Cd2Ef3_4"
 REQUEST = "12345678-1234-4321-a123-123456789abc"
 ORIGIN = "http://localhost:8080"
+STUDIO = "https://chalachitram-42da6--football-example.web.app"
+SHELL = "https://8080-cs-example.cs-europe-west1-test.cloudshell.dev"
 
 
 class Socket:
@@ -37,7 +41,7 @@ def http(jobs, method, path, payload=None, origin=ORIGIN):
     headers = f"{method} {path} HTTP/1.1\r\nHost: localhost:8080\r\nContent-Type: application/json\r\n"
     headers += f"X-ChalaChitra: match\r\nOrigin: {origin}\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n"
     sock = Socket(headers.encode() + body)
-    server = type("Server", (), {"jobs": jobs, "allowed_origins": {ORIGIN}})()
+    server = type("Server", (), {"jobs": jobs, "allowed_origins": {ORIGIN}, "studio": STUDIO})()
     fs.Handler(sock, ("127.0.0.1", 12345), server)
     response = HTTPResponse(Socket(sock.output.getvalue()))
     response.begin()
@@ -50,6 +54,48 @@ class FootballTests(unittest.TestCase):
         for bad in ("live", "../../live", "football/live", "--x"):
             with self.assertRaises(hosting.argparse.ArgumentTypeError):
                 hosting.preview_channel(bad)
+
+    def test_web_preview_menu_root_and_legacy_page_are_served_with_account_selection(self):
+        for path in ("/?authuser=1&redirectedPreviously=true", "/match.html"):
+            status, page = http(None, "GET", path)
+            self.assertEqual(status, 200)
+            self.assertIn(b"Open football studio", page)
+        status, config = http(None, "GET", "/api/studio")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(config)["studio"], STUDIO)
+        status, error = http(None, "GET", "/wrong")
+        self.assertEqual(status, 404)
+        self.assertTrue(error)
+
+    def test_terminal_resume_finishes_a_pending_request_without_opening_a_server_or_publishing(self):
+        fragment = urlencode({"video": VIDEO, "studio": STUDIO, "request": REQUEST})
+        result = {"videoId": VIDEO, "name": "Match A & B", "engine": "football-motion-v1", "durationMs": 10000,
+                  "stepSeconds": .5, "samples": 20, "moments": []}
+        for path in ("/match.html", "/?authuser=1"):
+            address = SHELL + path + "#" + fragment
+            output = StringIO()
+            with patch.object(sys, "argv", ["football_server.py", "--resume"]), patch("builtins.input", return_value=address), \
+                    patch.object(fs, "analyse_link", return_value=result) as scan, patch.object(fs, "ThreadingHTTPServer") as server, \
+                    redirect_stdout(output):
+                fs.main()
+            server.assert_not_called()
+            self.assertEqual(scan.call_args.args[0], VIDEO)
+            link = urlsplit(output.getvalue().strip().splitlines()[-1])
+            self.assertEqual(link.scheme + "://" + link.netloc, STUDIO)
+            self.assertEqual(link.path, "/")
+            self.assertFalse(link.query)
+            self.assertEqual(json.loads(parse_qs(link.fragment)["matchResult"][0]), {**result, "request": REQUEST})
+
+    def test_terminal_resume_rejects_incomplete_or_unrelated_requests_before_decoding(self):
+        valid = {"video": VIDEO, "studio": STUDIO, "request": REQUEST}
+        urls = [SHELL + "/match.html", SHELL + "/#video=" + VIDEO, "https://example.org/#" + urlencode(valid),
+                SHELL + "/#"+urlencode({**valid, "studio": "https://unrelated.web.app"}), SHELL + "/#"+urlencode({**valid, "request":"partial"}),
+                SHELL + "/#"+urlencode(valid) + "&video=" + VIDEO, SHELL + "/#"+urlencode({**valid, "video":"bad"})]
+        with patch.object(fs, "analyse_link") as scan:
+            for url in urls:
+                with self.subTest(url=url), self.assertRaises(ValueError):
+                    fs.resume_match(url)
+        scan.assert_not_called()
 
     def test_same_origin_job_idempotency_retry_and_private_routes(self):
         gate = Event()

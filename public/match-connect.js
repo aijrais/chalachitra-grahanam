@@ -1,5 +1,5 @@
 import {validateScan} from './football.js';
-import {analyserOrigin, studioOrigin} from './football-report.js';
+import {analyserAddress, studioOrigin} from './football-report.js';
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.hash.slice(1));
 const video = params.get('video'), request = params.get('request');
@@ -43,13 +43,29 @@ async function analyse() {
   }
 }
 
-if (origin && /^[\w-]{11}$/.test(video || '') && /^[a-f0-9-]{36}$/.test(request || '') && analyserOrigin(location.origin)) {
+async function showConnectedStudio() {
+  status('Private analyser is running. You can paste this page’s address into Connect a private link analyser in the studio.');
+  try {
+    const config = await api('/api/studio');
+    const studio = studioOrigin(config.studio);
+    if (!studio) return;
+    const url = new URL('/', studio);
+    url.hash = new URLSearchParams({analyser: analyserAddress(location.href)}).toString();
+    $('launchStudio').href = url.href;
+    $('launchStudio').hidden = false;
+    status('This browser has reached the private analyser. Open the studio to select your match.');
+  } catch { /* Older companions can still be paired by copying their address. */ }
+}
+
+if (origin && /^[\w-]{11}$/.test(video || '') && /^[a-f0-9-]{36}$/.test(request || '') && analyserAddress(location.origin)) {
   $('back').href = new URL('/', origin).href;
   $('back').hidden = false;
   $('run').hidden = false;
   $('run').onclick = analyse;
   $('matchTitle').textContent = 'YouTube · ' + video;
   status('Your private analyser will read this video from YouTube and temporarily decode a low-resolution track. The studio receives timestamps and measurements.');
+} else if (analyserAddress(location.origin)) {
+  showConnectedStudio();
 } else {
-  status('In the review studio, open a football match, enter this private Web Preview address and choose Analyse match.');
+  status('Open Web Preview from the Cloud Shell running your analyser.');
 }
